@@ -1,0 +1,4 @@
+PORT = 8989
+iptype = ipv4
+protocol = tcp
+serverip = 127.0.0.1

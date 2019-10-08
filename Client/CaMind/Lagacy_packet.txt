@@ -1,0 +1,26 @@
+#pragma once
+
+#define MAX_ARR_SIZE 20
+
+enum PACKET_TYPE
+{
+	SEND_POS,
+	GET_POSARR
+};
+
+#pragma pack(1)
+struct PACKET_HEADER
+{
+	int type;
+	int size;
+};
+
+struct PACKET_POINT
+{
+	PACKET_HEADER header;
+	int num;
+	int xarr[MAX_ARR_SIZE];
+	int yarr[MAX_ARR_SIZE];
+};
+
+#pragma pack()
