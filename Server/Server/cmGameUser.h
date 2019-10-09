@@ -2,6 +2,7 @@
 #include <vector>
 #include <string>
 #include <WinSock2.h>
+#include "PACKET.h"
 #define BUFSIZE 512
 
 enum class cmUserState
@@ -27,10 +28,11 @@ class cmGameUser
 	bool CopyToSendbuf(void* source, int size);
 	cmUserState state = cmUserState::DEFAULT;
 
-	void UpateCall();
+	void UpateCall(int type,int size);
+	void ProcessByteStream();
 
 	template<cmUserState S>
-	void Update();
+	void Update(int type,int size);
 public:
 	WSAOVERLAPPED overlapped;
 	WSABUF wsabuf;
@@ -40,7 +42,7 @@ public:
 };
 
 template<>
-void cmGameUser::Update<cmUserState::DEFAULT>();
+void cmGameUser::Update<cmUserState::DEFAULT>(int type,int size);
 
 template<>
-void cmGameUser::Update<cmUserState::READMSG>();
+void cmGameUser::Update<cmUserState::READMSG>(int type,int size);

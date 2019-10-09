@@ -19,6 +19,35 @@ void cmGameUser::Read(DWORD cbTransferred)
 	printf("[TCP/%s:%d] %s\n", client_addr.c_str(), client_port, readBuf + readBefore);
 }
 
+void cmGameUser::ProcessByteStream()
+{
+	while (true)
+	{
+		if (recvBytes < sizeof(PACKET_HEADER))
+		{
+			break;
+		}
+
+		PACKET_HEADER header;
+		memcpy(&header, readBuf, sizeof(header));
+
+		if (recvBytes < header.size)
+		{
+			break;
+		}
+
+		UpateCall(header.type,header.size);
+
+		for (int i = header.size; i < recvBytes ; i++)
+		{
+			readBuf[i - header.size] = readBuf[i];
+		}
+
+		recvBytes -= header.size;
+	}
+
+}
+
 void cmGameUser::Send()
 {
 	InitOverlapped();
@@ -34,8 +63,7 @@ void cmGameUser::Send()
 			printf("WSASend()");
 		}
 		return;
-	}
-	sendBytes = 0;
+	}	
 }
 
 void cmGameUser::Process(DWORD cbTransferred)
@@ -44,9 +72,14 @@ void cmGameUser::Process(DWORD cbTransferred)
 	if (isReading)
 	{
 		Read(cbTransferred);
+		ProcessByteStream();
+	}
+	else
+	{
+		sendBytes = 0;
+		ReadSet();
 	}
 	
-	UpateCall();
 }
 
 void cmGameUser::InitOverlapped()
@@ -86,28 +119,27 @@ void cmGameUser::ReadSet()
 }
 
 template<cmUserState S>
-void cmGameUser::Update()
+void cmGameUser::Update(int type,int size)
 {
-	printf("[TCP SERVER] %s : %d , error update call\n", client_addr.c_str(), client_port);
+	printf("[TCP SERVER] %s : %d , error update call unexpected state\n", client_addr.c_str(), client_port);
 }
 
-void cmGameUser::UpateCall()
+void cmGameUser::UpateCall(int type,int size)
 {
 	switch (state)
 	{
 	case cmUserState::DEFAULT:
-		Update<cmUserState::DEFAULT>();
+		Update<cmUserState::DEFAULT>(type,size);
 		break;
 	case cmUserState::READMSG:
-		Update<cmUserState::READMSG>();
+		Update<cmUserState::READMSG>(type,size);
 		break;
 	}
 }
 
 template<>
-void cmGameUser::Update<cmUserState::DEFAULT>()
+void cmGameUser::Update<cmUserState::DEFAULT>(int type,int size)
 {
-	state = cmUserState::READMSG;
 	isReading = false;
 	CopyToSendbuf(readBuf, recvBytes);
 	sendBytes = recvBytes;
@@ -116,9 +148,7 @@ void cmGameUser::Update<cmUserState::DEFAULT>()
 }
 
 template<>
-void cmGameUser::Update<cmUserState::READMSG>()
+void cmGameUser::Update<cmUserState::READMSG>(int type,int size)
 {
-	state = cmUserState::DEFAULT;
-	isReading = true;
-	ReadSet();
+	
 }
