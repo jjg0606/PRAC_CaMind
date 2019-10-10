@@ -13,6 +13,7 @@ enum PACKET_TYPE
 	PACKET_TYPE_LOBBY_IN,
 	PACKET_TYPE_LOBBY_CHAT,
 	PACKET_TYPE_LOBBY_PLAYERS,
+	PACKET_TYPE_LOBBY_CHANGE,
 	PACKET_TYPE_GAME_READY,
 	PACKET_TYPE_GAME_TURN_MSG,
 	PACKET_TYPE_GAME_CHAT_MSG,
@@ -66,13 +67,32 @@ PACKET_LOBBY_IN;
 typedef struct
 {
 	PACKET_HEADER header;
-	int playerNum;
-	int myNum;
+	int cntPlayer;
 	int avatar[MAX_PLAYERS_IN_ROOM];
 	bool isReady[MAX_PLAYERS_IN_ROOM];
 	wchar_t nameArr[MAX_PLAYERS_IN_ROOM][MAX_NAME_LENGTH];
 }
 PACKET_LOBBY_PLAYERS;
+
+typedef struct
+{
+	PACKET_HEADER header;
+	wchar_t playerName[MAX_NAME_LENGTH];
+	int chatLength;
+	wchar_t msg[MAX_CHAT_LENGTH];
+}
+PACKET_LOBBY_CHAT;
+
+typedef struct
+{
+	PACKET_HEADER header;
+	int seatBefore;
+	int seatAfter;
+	int avatar;
+	bool rdyState;
+	wchar_t name[MAX_NAME_LENGTH];
+}
+PACKET_LOBBY_CHANGE;
 
 typedef struct
 {
@@ -90,14 +110,5 @@ typedef struct
 	wchar_t msg[MAX_CHAT_LENGTH];
 }
 PACKET_GAME_CHAT_MSG;
-
-typedef struct
-{
-	PACKET_HEADER header;
-	wchar_t playerName[MAX_NAME_LENGTH];
-	int chatLength;
-	wchar_t msg[MAX_CHAT_LENGTH];
-}
-PACKET_LOBBY_CHAT;
 
 #pragma pack()

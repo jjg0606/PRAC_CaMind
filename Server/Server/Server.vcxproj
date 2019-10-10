@@ -139,6 +139,7 @@
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
+    <ClCompile Include="cmGameRoom.cpp" />
     <ClCompile Include="cmGameUser.cpp" />
     <ClCompile Include="cmUserMgr.cpp" />
     <ClCompile Include="main.cpp" />

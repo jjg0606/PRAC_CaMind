@@ -11,12 +11,83 @@ cmGameUser::cmGameUser(SOCKET sock, std::string client_addr, int client_port)
 	printf("[TCP server] client connected : ip = %s, port = %d\n", client_addr.c_str(), client_port);
 }
 
+cmGameUser::~cmGameUser()
+{
+
+}
+
+
+void cmGameUser::Process(DWORD cbTransferred)
+{
+	// receive
+	if (isReading)
+	{
+		Read(cbTransferred);
+		ProcessByteStream();
+	}
+	else
+	{
+		sendBytes -= cbTransferred;
+		if (sendBytes > 0)
+		{
+			Send();
+		}
+		else
+		{
+			ReadSet();
+		}		
+	}
+	
+}
+
+#pragma region IO Util Function
 void cmGameUser::Read(DWORD cbTransferred)
 {
 	int readBefore = recvBytes;
 	recvBytes += cbTransferred;
 	readBuf[recvBytes] = '\0';
-	printf("[TCP/%s:%d] %s\n", client_addr.c_str(), client_port, readBuf + readBefore);
+	//printf("[TCP/%s:%d] %s\n", client_addr.c_str(), client_port, readBuf + readBefore);
+}
+
+void cmGameUser::Send()
+{
+	isReading = false;
+
+	InitOverlapped();
+	wsabuf.buf = sendBuf;
+	wsabuf.len = sendBytes;
+
+	DWORD sendbytes;
+	int retval = WSASend(sock, &wsabuf, 1, &sendbytes, 0, &overlapped, NULL);
+	if (retval == SOCKET_ERROR)
+	{
+		if (WSAGetLastError() != WSA_IO_PENDING)
+		{
+			printf("WSASend()");
+		}
+		return;
+	}	
+}
+
+void cmGameUser::ReadSet()
+{
+	isReading = true;
+
+	InitOverlapped();
+	wsabuf.buf = readBuf + recvBytes;
+	wsabuf.len = BUFSIZE - recvBytes;
+
+	DWORD recvbytes;
+	DWORD flags = 0;
+	int retval = WSARecv(sock, &wsabuf, 1, &recvbytes, &flags, &overlapped, NULL);
+	if (retval == SOCKET_ERROR)
+	{
+		if (WSAGetLastError() != WSA_IO_PENDING)
+		{
+			printf("WSARecv()");
+		}
+		return;
+	}
 }
 
 void cmGameUser::ProcessByteStream()
@@ -36,6 +107,7 @@ void cmGameUser::ProcessByteStream()
 			break;
 		}
 
+		printf("[TCP/%s:%d] type : %d, size : %d\n", client_addr.c_str(), client_port, header.type, header.size);
 		UpateCall(header.type,header.size);
 
 		for (int i = header.size; i < recvBytes ; i++)
@@ -46,45 +118,6 @@ void cmGameUser::ProcessByteStream()
 		recvBytes -= header.size;
 	}
 
-}
-
-void cmGameUser::Send()
-{
-	InitOverlapped();
-	wsabuf.buf = sendBuf;
-	wsabuf.len = sendBytes;
-
-	DWORD sendbytes;
-	int retval = WSASend(sock, &wsabuf, 1, &sendbytes, 0, &overlapped, NULL);
-	if (retval == SOCKET_ERROR)
-	{
-		if (WSAGetLastError() != WSA_IO_PENDING)
-		{
-			printf("WSASend()");
-		}
-		return;
-	}	
-}
-
-void cmGameUser::Process(DWORD cbTransferred)
-{
-	// receive
-	if (isReading)
-	{
-		Read(cbTransferred);
-		ProcessByteStream();
-	}
-	else
-	{
-		sendBytes = 0;
-		ReadSet();
-	}
-	
-}
-
-void cmGameUser::InitOverlapped()
-{
-	ZeroMemory(&this->overlapped, sizeof(this->overlapped));
 }
 
 bool cmGameUser::CopyToSendbuf(void* source, int size)
@@ -99,24 +132,51 @@ bool cmGameUser::CopyToSendbuf(void* source, int size)
 	return true;
 }
 
-void cmGameUser::ReadSet()
+void cmGameUser::InitOverlapped()
 {
-	InitOverlapped();
-	wsabuf.buf = readBuf + recvBytes;
-	wsabuf.len = BUFSIZE - recvBytes;
+	ZeroMemory(&this->overlapped, sizeof(this->overlapped));
+}
 
-	DWORD recvbytes;
-	DWORD flags = 0;
-	int retval = WSARecv(sock, &wsabuf, 1, &recvbytes, &flags, &overlapped, NULL);
-	if (retval == SOCKET_ERROR)
+void cmGameUser::SendPacket(void* packet, int size)
+{
+	CopyToSendbuf(packet, size);
+	Send();
+}
+
+#pragma endregion
+
+#pragma region Getter Setter
+
+int cmGameUser::getAvatar()
+{
+	return avatarNum;
+}
+
+void cmGameUser::getNameCopy(wchar_t* dest)
+{
+	for (int i = 0; i < MAX_NAME_LENGTH; i++)
 	{
-		if (WSAGetLastError() != WSA_IO_PENDING)
-		{
-			printf("WSARecv()");
-		}
-		return;
+		dest[i] = this->name[i];
 	}
 }
+
+#pragma endregion
+
+#pragma region Call Function
+void cmGameUser::UpateCall(int type, int size)
+{
+	switch (state)
+	{
+	case cmUserState::DEFAULT:
+		Update<cmUserState::DEFAULT>(type, size);
+		break;
+	case cmUserState::READMSG:
+		Update<cmUserState::READMSG>(type, size);
+		break;
+	}
+}
+
+#pragma endregion
 
 template<cmUserState S>
 void cmGameUser::Update(int type,int size)
@@ -124,27 +184,36 @@ void cmGameUser::Update(int type,int size)
 	printf("[TCP SERVER] %s : %d , error update call unexpected state\n", client_addr.c_str(), client_port);
 }
 
-void cmGameUser::UpateCall(int type,int size)
-{
-	switch (state)
-	{
-	case cmUserState::DEFAULT:
-		Update<cmUserState::DEFAULT>(type,size);
-		break;
-	case cmUserState::READMSG:
-		Update<cmUserState::READMSG>(type,size);
-		break;
-	}
-}
 
 template<>
 void cmGameUser::Update<cmUserState::DEFAULT>(int type,int size)
-{
-	isReading = false;
-	CopyToSendbuf(readBuf, recvBytes);
-	sendBytes = recvBytes;
-	recvBytes = 0;
-	Send();
+{	
+	switch (type)
+	{
+
+	case PACKET_TYPE_LOGIN_INFO:
+	if (avatarNum != -1)
+	{
+		// already processed
+		ReadSet();
+		break;
+	}
+	else
+	{
+		PACKET_LOGIN_INFO loginPac;
+		memcpy(&loginPac, readBuf, size);
+		for (int i = 0; i < MAX_NAME_LENGTH;i++)
+		{
+			name[i] = loginPac.name[i];
+		}
+		avatarNum = loginPac.avatar;
+	}			
+	break;
+
+	default:
+		ReadSet();
+		break;
+	}	
 }
 
 template<>

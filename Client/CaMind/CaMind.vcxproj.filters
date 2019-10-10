@@ -101,9 +101,6 @@
     <ClInclude Include="Line.h">
       <Filter>헤더 파일\Core</Filter>
     </ClInclude>
-    <ClInclude Include="pgBtn.h">
-      <Filter>헤더 파일\Core</Filter>
-    </ClInclude>
     <ClInclude Include="ProgramCore.h">
       <Filter>헤더 파일\Core</Filter>
     </ClInclude>
@@ -128,10 +125,16 @@
     <ClInclude Include="WndBase.h">
       <Filter>헤더 파일\Core</Filter>
     </ClInclude>
-    <ClInclude Include="PACKET.h">
-      <Filter>리소스 파일</Filter>
-    </ClInclude>
     <ClInclude Include="DrawObject.h">
+      <Filter>헤더 파일</Filter>
+    </ClInclude>
+    <ClInclude Include="pgBtn.h">
+      <Filter>헤더 파일</Filter>
+    </ClInclude>
+    <ClInclude Include="PACKET.h">
+      <Filter>헤더 파일</Filter>
+    </ClInclude>
+    <ClInclude Include="cmGameState.h">
       <Filter>헤더 파일</Filter>
     </ClInclude>
   </ItemGroup>

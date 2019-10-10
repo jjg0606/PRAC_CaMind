@@ -7,7 +7,7 @@ extern SOCKET g_sock;
 
 void DrawObject::Update()
 {
-	Vector2D<int>&& mousePos = getMousePos();
+	/*Vector2D<int>&& mousePos = getMousePos();
 	if (GetMouseKey(MOUSE_LEFT_BTN))
 	{		
 		if (isContinuous)
@@ -42,7 +42,7 @@ void DrawObject::Update()
 			pointVec.pop_front();
 		}
 		send(g_sock, (const char*)&psend, sizeof(psend), 0);
-	}
+	}*/
 }
 
 void DrawObject::Render(HDC hdc)

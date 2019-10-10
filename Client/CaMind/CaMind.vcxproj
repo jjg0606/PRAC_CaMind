@@ -159,6 +159,7 @@
   <ItemGroup>
     <ClInclude Include="Camera.h" />
     <ClInclude Include="cmGameScene.h" />
+    <ClInclude Include="cmGameState.h" />
     <ClInclude Include="Collider.h" />
     <ClInclude Include="DrawObject.h" />
     <ClInclude Include="EnumImg.h" />
