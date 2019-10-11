@@ -141,13 +141,19 @@
   <ItemGroup>
     <ClCompile Include="cmGameRoom.cpp" />
     <ClCompile Include="cmGameUser.cpp" />
+    <ClCompile Include="cmLobbyMgr.cpp" />
+    <ClCompile Include="cmRoomMgr.cpp" />
     <ClCompile Include="cmUserMgr.cpp" />
     <ClCompile Include="main.cpp" />
+    <ClCompile Include="cmAnswerReader.cpp" />
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="cmAnswerReader.h" />
     <ClInclude Include="cmGameRoom.h" />
     <ClInclude Include="cmGameUser.h" />
+    <ClInclude Include="cmRoomMgr.h" />
     <ClInclude Include="cmUserMgr.h" />
+    <ClInclude Include="cmLobbyMgr.h" />
     <ClInclude Include="PACKET.h" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />

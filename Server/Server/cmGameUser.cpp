@@ -1,4 +1,7 @@
 #include "cmGameUser.h"
+#include "cmRoomMgr.h"
+#include "cmLobbyMgr.h"
+#include <iostream>
 
 cmGameUser::cmGameUser(SOCKET sock, std::string client_addr, int client_port)
 	: sock(sock), client_addr(client_addr), client_port(client_port)
@@ -13,7 +16,11 @@ cmGameUser::cmGameUser(SOCKET sock, std::string client_addr, int client_port)
 
 cmGameUser::~cmGameUser()
 {
-
+	cmLobbyMgr::instance.getOut(this);
+	if (roomNum != -1)
+	{
+		cmRoomMgr::instance[roomNum]->requestRoomOut(this);
+	}
 }
 
 
@@ -43,9 +50,7 @@ void cmGameUser::Process(DWORD cbTransferred)
 #pragma region IO Util Function
 void cmGameUser::Read(DWORD cbTransferred)
 {
-	int readBefore = recvBytes;
 	recvBytes += cbTransferred;
-	readBuf[recvBytes] = '\0';
 	//printf("[TCP/%s:%d] %s\n", client_addr.c_str(), client_port, readBuf + readBefore);
 }
 
@@ -92,6 +97,7 @@ void cmGameUser::ReadSet()
 
 void cmGameUser::ProcessByteStream()
 {
+	bool isUpdateCalled = false;
 	while (true)
 	{
 		if (recvBytes < sizeof(PACKET_HEADER))
@@ -106,7 +112,7 @@ void cmGameUser::ProcessByteStream()
 		{
 			break;
 		}
-
+		isUpdateCalled = true;
 		printf("[TCP/%s:%d] type : %d, size : %d\n", client_addr.c_str(), client_port, header.type, header.size);
 		UpateCall(header.type,header.size);
 
@@ -116,6 +122,11 @@ void cmGameUser::ProcessByteStream()
 		}
 
 		recvBytes -= header.size;
+	}
+
+	if (!isUpdateCalled || isReading)
+	{
+		ReadSet();
 	}
 
 }
@@ -170,8 +181,11 @@ void cmGameUser::UpateCall(int type, int size)
 	case cmUserState::DEFAULT:
 		Update<cmUserState::DEFAULT>(type, size);
 		break;
-	case cmUserState::READMSG:
-		Update<cmUserState::READMSG>(type, size);
+	case cmUserState::LOBBY:
+		Update<cmUserState::LOBBY>(type, size);
+		break;
+	case cmUserState::GAME:
+		Update<cmUserState::GAME>(type, size);
 		break;
 	}
 }
@@ -194,8 +208,6 @@ void cmGameUser::Update<cmUserState::DEFAULT>(int type,int size)
 	case PACKET_TYPE_LOGIN_INFO:
 	if (avatarNum != -1)
 	{
-		// already processed
-		ReadSet();
 		break;
 	}
 	else
@@ -207,17 +219,79 @@ void cmGameUser::Update<cmUserState::DEFAULT>(int type,int size)
 			name[i] = loginPac.name[i];
 		}
 		avatarNum = loginPac.avatar;
+		cmRoomMgr::instance.getAllRoomInfo(this);
+		cmLobbyMgr::instance.getIn(this);
+		state = cmUserState::LOBBY;
 	}			
 	break;
 
 	default:
-		ReadSet();
 		break;
 	}	
 }
 
 template<>
-void cmGameUser::Update<cmUserState::READMSG>(int type,int size)
+void cmGameUser::Update<cmUserState::LOBBY>(int type,int size)
 {
-	
+	switch (type)
+	{
+
+	case PACKET_TYPE_LOBBY_IN:
+	{
+		PACKET_LOBBY_IN lobinpac;
+		memcpy(&lobinpac, readBuf, size);
+		if (lobinpac.index < 0 || lobinpac.index >= MAX_LOBBY) // refresh
+		{
+			cmRoomMgr::instance.getAllRoomInfo(this);
+		}
+		else
+		{
+			if (cmRoomMgr::instance[lobinpac.index]->requestRoomIn(this))
+			{
+				cmLobbyMgr::instance.getOut(this);
+				state = cmUserState::GAME;
+				roomNum = lobinpac.index;
+			}
+		}
+	}
+	break;
+
+	case PACKET_TYPE_LOBBY_CHAT:
+	{
+		PACKET_LOBBY_CHAT lobchatpac;
+		memcpy(&lobchatpac, readBuf, size);
+		for (int i = 0; i < MAX_NAME_LENGTH; i++)
+		{
+			lobchatpac.playerName[i] = name[i];
+		}		
+		std::cout << client_addr << name << ' ' << size << '\n';
+		cmLobbyMgr::instance.BroadCast(&lobchatpac, size);
+	}
+	break;
+
+	default:
+		break;
+	}
+}
+
+template<>
+void cmGameUser::Update<cmUserState::GAME>(int type, int size)
+{
+	switch (type)
+	{
+
+	case PACKET_TYPE_LOBBY_CHAT:
+	{
+		PACKET_LOBBY_CHAT lobchatpac;
+		memcpy(&lobchatpac, readBuf, size);
+		for (int i = 0; i < MAX_NAME_LENGTH; i++)
+		{
+			lobchatpac.playerName[i] = name[i];
+		}
+		cmRoomMgr::instance[roomNum]->BroadCastToRoomUser(&lobchatpac, lobchatpac.header.size);
+	}
+	break;
+
+
+	}
 }

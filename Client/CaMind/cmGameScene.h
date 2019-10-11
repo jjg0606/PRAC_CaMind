@@ -1,5 +1,6 @@
 #pragma once
 #include <map>
+#include <list>
 #include "Image.h"
 #include "Scene.h"
 #include "DrawObject.h"
@@ -8,6 +9,37 @@
 #include "PACKET.h"
 #include "cmGameState.h"
 #define BUFSIZE 512
+
+typedef struct
+{
+	int avatarNum;
+	bool isReady;
+	wchar_t name[MAX_NAME_LENGTH];
+}
+GameUserInfo;
+
+typedef struct
+{
+	int startposX;
+	int startposY;
+	int dx;
+	int dy;
+	int width;
+	int height;
+	int rows;
+	int cols;
+
+	int getPosX(int col)
+	{
+		return startposX + col * (dx + width);
+	}
+
+	int getPosY(int row)
+	{
+		return startposY + row * (dy + height);
+	}
+}
+TableArrange;
 
 
 class cmGameScene
@@ -29,6 +61,7 @@ class cmGameScene
 	void SendToServer(void* source, int size);
 	void LoadImg();
 
+#pragma region State Functions
 	template<cmGameState S>
 	void ProcessPacket(int type, int size) {};
 	void ProcessPacketCaller(int type, int size);
@@ -52,6 +85,7 @@ class cmGameScene
 	template<cmGameState S>
 	void StateClick(int x,int y,int E_BTN) {};
 	void StateClickCaller(int x, int y, int E_BTN);
+#pragma endregion
 
 	// INIT (LOGIN)
 	pgBtn* avatarBtn[4];
@@ -60,6 +94,25 @@ class cmGameScene
 	const int idName = 100;
 	HWND hName;
 	void SendLoginSignal();
+	// LOBBY
+	HWND hChat;
+	const int idChat = 101;
+	std::vector<std::pair<int, bool>> lobbyInfo;
+	std::list<std::wstring> chatBuf;
+	pgBtn* refreshBtn;
+	const int maxChatSize = 17;
+	void SendChatMsg();
+	void SendLobbyIn(int index);
+	void SendLobbyRefMsg();
+	TableArrange lobbyArrange;
+	
+	// Game
+	std::vector<GameUserInfo> gameUserInfoVec;
+	TableArrange gameArrange;
+	pgBtn* readyBtn;
+	pgBtn* exitBtn;
+	pgBtn* sketchPlane;
+	const int maxChatSizeInGame = 5;
 
 public:
 	void DrawScreen(HDC hdc) override;

@@ -180,11 +180,12 @@ DWORD WINAPI WorkThread(LPVOID arg)
 		cmGameUser* curUser = cmUserMgr::instance[client_sock];
 		if (curUser == nullptr)
 		{
-			err_display("User is null ptr");
+			err_display("User is null ptr\n");
 			closesocket(client_sock);
 			continue;
 		}
-
+		//
+		//curUser->userMtx.lock();
 		// TODO
 		if (retval == 0 || cbTransferred == 0)
 		{
@@ -201,6 +202,8 @@ DWORD WINAPI WorkThread(LPVOID arg)
 		}
 
 		curUser->Process(cbTransferred);
+		//
+		//curUser->userMtx.unlock();
 	}
 
 	return 0;

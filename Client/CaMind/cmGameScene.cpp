@@ -30,6 +30,7 @@ void cmGameScene::LoadImg()
 	imgMap[IMG_BTN_READY] = new Image(L"res/ready_btn.bmp");
 	imgMap[IMG_BTN_REFRESH] = new Image(L"res/refresh_btn.bmp");
 	imgMap[IMG_BTN_EXIT] = new Image(L"res/exit_btn.bmp");
+	imgMap[IMG_SKETCH_PLANE] = new Image(L"res/sketch.bmp");
 }
 
 void cmGameScene::OnInput(WPARAM wParam)
@@ -240,7 +241,24 @@ void cmGameScene::StateClickCaller(int x, int y, int E_BTN)
 template<>
 void cmGameScene::ProcessPacket<cmGameState::INIT>(int type, int size)
 {
+	switch (type)
+	{
 
+	case PACKET_TYPE_LOBBY_INFO:
+	{
+		PACKET_LOBBY_INFO lobypac;
+		memcpy(&lobypac, readBuf, size);
+		lobbyInfo.resize(lobypac.roomNum);
+		for (int i = 0; i < lobbyInfo.size(); i++)
+		{
+			lobbyInfo[i].first = lobypac.playerNum[i];
+			lobbyInfo[i].second = lobypac.isPlaying[i];
+		}
+		ChangeStateTo(cmGameState::LOBBY);
+	}
+	break;
+
+	}
 }
 
 template<>
@@ -351,37 +369,229 @@ void cmGameScene::SendLoginSignal()
 template<>
 void cmGameScene::ProcessPacket<cmGameState::LOBBY>(int type, int size)
 {
+	switch (type)
+	{
 
+	case PACKET_TYPE_LOBBY_INFO:
+	{
+		PACKET_LOBBY_INFO lobypac;
+		memcpy(&lobypac, readBuf, size);	
+		for (int i = 0; i < lobbyInfo.size(); i++)
+		{
+			lobbyInfo[i].first = lobypac.playerNum[i];
+			lobbyInfo[i].second = lobypac.isPlaying[i];
+		}
+	}
+	break;
+
+	case PACKET_TYPE_LOBBY_PLAYERS:
+	{
+		PACKET_LOBBY_PLAYERS loppac;
+		memcpy(&loppac, readBuf, size);
+		gameUserInfoVec.resize(MAX_PLAYERS_IN_ROOM);
+		for (int i = 0; i < gameUserInfoVec.size(); i++)
+		{
+			gameUserInfoVec[i].avatarNum = loppac.avatar[i];
+			if (gameUserInfoVec[i].avatarNum == -1)
+			{
+				continue;
+			}
+			
+			gameUserInfoVec[i].isReady = loppac.isReady[i];
+			memcpy_s(gameUserInfoVec[i].name, sizeof(gameUserInfoVec[i].name), loppac.nameArr[i], sizeof(wchar_t)*MAX_NAME_LENGTH);
+			ChangeStateTo(cmGameState::IN_GAME);
+		}
+	}
+	break;
+
+	case PACKET_TYPE_LOBBY_CHAT:
+	{
+		PACKET_LOBBY_CHAT lobchatpac;
+		memcpy(&lobchatpac, readBuf, size);
+		std::wstring read(lobchatpac.playerName);
+		read.append(L" : ");
+		for (int i = 0; i < lobchatpac.chatLength; i++)
+		{
+			read.push_back(lobchatpac.msg[i]);
+		}
+		chatBuf.push_back(read);
+	}
+	break;
+
+	}
 }
 
 template<>
 void cmGameScene::StateDraw<cmGameState::LOBBY>(HDC hdc)
 {
+	int startPosX = lobbyArrange.startposX;
+	int startPosY = lobbyArrange.startposY;
+	int width = lobbyArrange.width;
+	int height = lobbyArrange.height;
+	int rows = lobbyArrange.rows;
+	int cols = lobbyArrange.cols;
+	int dx = lobbyArrange.dx;
+	int dy = lobbyArrange.dy;
 
+	wchar_t charbuf[20];
+
+	int index = 0;
+	for (int r = 0; r < rows; r++)
+	{
+		for (int c = 0; c < cols; c++, index++)
+		{
+			int curX = startPosX + dx * c + width * c;
+			int curY = startPosY + dy * r + height * r;
+			MoveToEx(hdc, curX, curY, NULL);
+			LineTo(hdc, curX + width, curY);
+			LineTo(hdc, curX + width, curY + height);
+			LineTo(hdc, curX, curY + height);
+			LineTo(hdc, curX, curY);
+
+			if (lobbyInfo[index].second)
+			{
+				wsprintf(charbuf, TEXT("PLAYING NOW"));
+			}
+			else
+			{
+				wsprintf(charbuf, TEXT("WAITING - %d"), lobbyInfo[index].first);
+			}
+
+			TextOut(hdc, curX, curY, charbuf, lstrlen(charbuf));
+		}
+	}
+
+	render.SetImg(imgMap[IMG_BTN_REFRESH]);
+	render.SetPosition(refreshBtn->xpos, refreshBtn->ypos);
+	render.Render(hdc);
+
+	{
+		int startX = 1000;
+		int startY = 50;
+		int dy = 30;
+		int index = 0;
+		for (auto iter = chatBuf.begin(); iter != chatBuf.end(); iter++, index++)
+		{
+			TextOut(hdc, startX, startPosY + dy * index, iter->c_str(), iter->length());
+		}
+	}
 }
 
 template<>
 void cmGameScene::StateInit<cmGameState::LOBBY>()
 {
+	hChat = CreateWindow(TEXT("edit"), NULL, WS_CHILD | WS_BORDER | WS_VISIBLE | ES_AUTOHSCROLL, 1000, 550, 300, 30, ProgramCore::instance.getHWND(), (HMENU)idChat, ProgramCore::instance.getGinst(), NULL);
+	SendMessage(hChat, EM_LIMITTEXT, (WPARAM)MAX_CHAT_LENGTH, 0);
+	chatBuf.clear();
+	refreshBtn = new pgBtn(670, 310 - imgMap[IMG_BTN_REFRESH]->bmHeight, imgMap[IMG_BTN_REFRESH]->bmWidth, imgMap[IMG_BTN_REFRESH]->bmHeight);
 
+	lobbyArrange.startposX = 50;
+	lobbyArrange.startposY = 50;
+	lobbyArrange.width = 100;
+	lobbyArrange.height = 120;
+	lobbyArrange.rows = 2;
+	lobbyArrange.cols = 5;
+	lobbyArrange.dx = 20;
+	lobbyArrange.dy = 20;
 }
 
 template<>
 void cmGameScene::StateRelease<cmGameState::LOBBY>()
 {
-
+	DestroyWindow(hChat);
+	delete refreshBtn;
 }
 
 template<>
 void cmGameScene::StateUpdate<cmGameState::LOBBY>()
 {
-
+	// enter key pressed
+	if (GetAsyncKeyState(VK_RETURN) & 0x8000)
+	{
+		SendChatMsg();
+	}
+	if (chatBuf.size() > maxChatSize)
+	{
+		chatBuf.pop_front();
+	}
 }
 
 template<>
 void cmGameScene::StateClick<cmGameState::LOBBY>(int x, int y, int E_BTN)
 {
+	if (E_BTN != MOUSE_LEFT_BTN)
+	{
+		return;
+	}
 
+	if (refreshBtn->isIn(x, y))
+	{
+		SendLobbyRefMsg();
+		return;
+	}
+
+	int startPosX = lobbyArrange.startposX;
+	int startPosY = lobbyArrange.startposY;
+	int width = lobbyArrange.width;
+	int height = lobbyArrange.height;
+	int rows = lobbyArrange.rows;
+	int cols = lobbyArrange.cols;
+	int dx = lobbyArrange.dx;
+	int dy = lobbyArrange.dy;
+
+	for (int r = 0; r < rows; r++)
+	{
+		for (int c = 0; c < cols; c++)
+		{
+			int curX = startPosX + dx * c + width * c;
+			int curY = startPosY + dy * r + height * r;
+			int lastX = curX + width;
+			int lastY = curY + height;
+			if (x >= curX && x <= lastX && y >= curY && y <= lastY)
+			{
+				// TODO
+				SendLobbyIn(cols*r + c);
+				return;
+			}
+		}
+	}
+}
+
+void cmGameScene::SendChatMsg()
+{
+	int length = GetWindowTextLength(hChat);
+	if (length == 0)
+	{
+		return;
+	}
+
+	PACKET_LOBBY_CHAT lobchatpac;
+	lobchatpac.header.type = PACKET_TYPE_LOBBY_CHAT;
+	lobchatpac.chatLength = length;
+	GetWindowText(hChat, lobchatpac.msg, MAX_CHAT_LENGTH);
+	lobchatpac.header.size = sizeof(PACKET_LOBBY_CHAT) - (MAX_CHAT_LENGTH - length) * sizeof(wchar_t);
+
+	SetWindowText(hChat, L"");
+
+	SendToServer(&lobchatpac, lobchatpac.header.size);
+}
+
+void cmGameScene::SendLobbyIn(int index)
+{
+	PACKET_LOBBY_IN lobinpac;
+	lobinpac.header.type = PACKET_TYPE_LOBBY_IN;
+	lobinpac.header.size = sizeof(PACKET_LOBBY_IN);
+	lobinpac.index = index;
+	SendToServer(&lobinpac, lobinpac.header.size);
+}
+
+void cmGameScene::SendLobbyRefMsg()
+{
+	PACKET_LOBBY_IN lobinpac;
+	lobinpac.header.type = PACKET_TYPE_LOBBY_IN;
+	lobinpac.header.size = sizeof(PACKET_LOBBY_IN);
+	lobinpac.index = -1;
+	SendToServer(&lobinpac, lobinpac.header.size);
 }
 #pragma endregion
 
@@ -389,31 +599,150 @@ void cmGameScene::StateClick<cmGameState::LOBBY>(int x, int y, int E_BTN)
 template<>
 void cmGameScene::ProcessPacket<cmGameState::IN_GAME>(int type, int size)
 {
+	switch (type)
+	{
 
+	case PACKET_TYPE_LOBBY_CHANGE:
+	{
+		PACKET_LOBBY_CHANGE lobchanpac;
+		memcpy_s(&lobchanpac, sizeof(lobchanpac), readBuf, size);
+
+		GameUserInfo chuser;
+		chuser.avatarNum = lobchanpac.avatar;
+		chuser.isReady = lobchanpac.rdyState;
+		memcpy_s(chuser.name, sizeof(chuser.name), lobchanpac.name, sizeof(lobchanpac.name));
+		if (lobchanpac.seatBefore == -1) // new come
+		{
+			gameUserInfoVec[lobchanpac.seatAfter] = chuser;
+			break;
+		}		
+		gameUserInfoVec[lobchanpac.seatBefore].avatarNum = -1;
+		if (lobchanpac.seatAfter != -1) 
+		{
+			gameUserInfoVec[lobchanpac.seatAfter] = chuser;
+		}
+		else// out
+		{
+			break;			
+		}
+			
+	}
+	break;
+
+	case PACKET_TYPE_LOBBY_CHAT:
+	{
+		PACKET_LOBBY_CHAT lobchatpac;
+		memcpy(&lobchatpac, readBuf, size);
+		std::wstring read(lobchatpac.playerName);
+		read.append(L" : ");
+		for (int i = 0; i < lobchatpac.chatLength; i++)
+		{
+			read.push_back(lobchatpac.msg[i]);
+		}
+		chatBuf.push_back(read);
+		if (chatBuf.size() > maxChatSizeInGame)
+		{
+			chatBuf.pop_front();
+		}
+	}
+	break;
+
+	default:
+		break;
+	}
 }
 
 template<>
 void cmGameScene::StateDraw<cmGameState::IN_GAME>(HDC hdc)
 {
+	render.SetImg(imgMap[IMG_SKETCH_PLANE]);
+	render.SetPosition(sketchPlane->xpos, sketchPlane->ypos);
+	render.Render(hdc);
 
+	//550, 700
+	int chatStartX = 550;
+	int chatStartY = 650;
+	int chatDy = 30;
+	int chatIdx = 0;
+	for (auto iter = chatBuf.rbegin(); iter != chatBuf.rend(); iter++, chatIdx++)
+	{
+		TextOut(hdc, chatStartX, chatStartY - chatDy * chatIdx, iter->c_str(), iter->size());
+	}
+
+	int index = 0;
+	for (int r = 0; r < gameArrange.rows; r++)
+	{
+		for (int c = 0; c < gameArrange.cols; c++,index++)
+		{
+			int avatar = gameUserInfoVec[index].avatarNum;
+			if (avatar == -1)
+			{
+				continue;
+			}
+			int xpos = gameArrange.getPosX(c);
+			int ypos = gameArrange.getPosY(r);
+			render.SetImg(imgMap[IMG_AVATAR_1 + avatar]);
+			render.SetPosition(xpos,ypos);
+			render.Render(hdc);
+
+			TextOut(hdc, xpos, ypos + gameArrange.height, gameUserInfoVec[index].name, wcslen(gameUserInfoVec[index].name));
+
+			if (gameUserInfoVec[index].isReady)
+			{
+				render.SetImg(imgMap[IMG_AURA_READY]);
+				render.Render(hdc);
+			}
+		}
+	}
+
+	render.SetImg(imgMap[IMG_BTN_READY]);
+	render.SetPosition(readyBtn->xpos, readyBtn->ypos);
+	render.Render(hdc);
+
+	render.SetImg(imgMap[IMG_BTN_EXIT]);
+	render.SetPosition(exitBtn->xpos, exitBtn->ypos);
+	render.Render(hdc);
 }
 
 template<>
 void cmGameScene::StateInit<cmGameState::IN_GAME>()
 {
+	hChat = CreateWindow(TEXT("edit"), NULL, WS_CHILD | WS_BORDER | WS_VISIBLE | ES_AUTOHSCROLL, 550, 700, 300, 30, ProgramCore::instance.getHWND(), (HMENU)idChat, ProgramCore::instance.getGinst(), NULL);
+	SendMessage(hChat, EM_LIMITTEXT, (WPARAM)MAX_CHAT_LENGTH, 0);
+	chatBuf.clear();
+
+	readyBtn = new pgBtn(50, 700, imgMap[IMG_BTN_READY]->bmWidth, imgMap[IMG_BTN_READY]->bmHeight);
+	exitBtn = new pgBtn(300, 700, imgMap[IMG_BTN_EXIT]->bmWidth, imgMap[IMG_BTN_EXIT]->bmHeight);
+	sketchPlane = new pgBtn(200,50,imgMap[IMG_SKETCH_PLANE]->bmWidth,imgMap[IMG_SKETCH_PLANE]->bmHeight);
+
+	gameArrange.startposX = 50;
+	gameArrange.startposY = 50;
+	gameArrange.width = imgMap[IMG_AVATAR_1]->bmWidth;
+	gameArrange.height = imgMap[IMG_AVATAR_1]->bmHeight;
+	gameArrange.rows = 4;
+	gameArrange.cols = 2;
+	gameArrange.dx = 1000;
+	gameArrange.dy = 100;
 
 }
 
 template<>
 void cmGameScene::StateRelease<cmGameState::IN_GAME>()
 {
+	DestroyWindow(hChat);
 
+	delete readyBtn;
+	delete exitBtn;
+	delete sketchPlane;
 }
 
 template<>
 void cmGameScene::StateUpdate<cmGameState::IN_GAME>()
 {
-
+	if (GetAsyncKeyState(VK_RETURN) & 0x8000)
+	{
+		SendChatMsg();
+	}
 }
 
 template<>

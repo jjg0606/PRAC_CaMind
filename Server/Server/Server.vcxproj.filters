@@ -27,6 +27,15 @@
     <ClCompile Include="cmGameRoom.cpp">
       <Filter>소스 파일</Filter>
     </ClCompile>
+    <ClCompile Include="cmAnswerReader.cpp">
+      <Filter>소스 파일</Filter>
+    </ClCompile>
+    <ClCompile Include="cmRoomMgr.cpp">
+      <Filter>소스 파일</Filter>
+    </ClCompile>
+    <ClCompile Include="cmLobbyMgr.cpp">
+      <Filter>소스 파일</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="cmGameUser.h">
@@ -39,6 +48,15 @@
       <Filter>헤더 파일</Filter>
     </ClInclude>
     <ClInclude Include="cmGameRoom.h">
+      <Filter>헤더 파일</Filter>
+    </ClInclude>
+    <ClInclude Include="cmAnswerReader.h">
+      <Filter>헤더 파일</Filter>
+    </ClInclude>
+    <ClInclude Include="cmRoomMgr.h">
+      <Filter>헤더 파일</Filter>
+    </ClInclude>
+    <ClInclude Include="cmLobbyMgr.h">
       <Filter>헤더 파일</Filter>
     </ClInclude>
   </ItemGroup>

@@ -28,23 +28,32 @@ bool cmGameRoom::requestRoomIn(cmGameUser* user)
 	locPac.rdyState = false;
 	user->getNameCopy(locPac.name);
 
-	BroadCastRoomChange(&locPac,locPac.header.size);
+	BroadCastToRoomUser(&locPac,locPac.header.size);
 	// TODO
 	// send room info to sigle user 
 	userSeat[seat] = user;
-	std::pair<int, bool> userRoomState = std::make_pair(seat, false);
-	userArr.insert(std::make_pair(user, userRoomState));
+	UserRoomInfo roominfo;
+	roominfo.avatar = user->getAvatar();
+	roominfo.isReady = false;
+	roominfo.seat = seat;
+	userArr.insert(std::make_pair(user,roominfo));
 	
+	SendRoomInfoTo(user);
+
 	return true;
 }
 
 void cmGameRoom::requestRoomOut(cmGameUser* user)
 {
 	std::unique_lock<std::shared_mutex> lckUserArr(mtxUserArr);
-	auto iter = userArr.find(user);
-	int seat = iter->second.first;
-	userSeat[seat] = nullptr;
-	userArr.erase(iter);
+	if (userArr.find(user) == userArr.end())
+	{
+		return;
+	}	
+
+	int seat = userArr[user].seat;
+	userSeat[seat] = nullptr;	
+	userArr.erase(user);
 
 	PACKET_LOBBY_CHANGE locPac;
 	locPac.header.type = PACKET_TYPE_LOBBY_CHANGE;
@@ -52,7 +61,7 @@ void cmGameRoom::requestRoomOut(cmGameUser* user)
 	locPac.seatBefore = seat;
 	locPac.seatAfter = -1;
 
-	BroadCastRoomChange(&locPac,locPac.header.size);
+	BroadCastToRoomUser(&locPac,locPac.header.size);
 }
 
 int cmGameRoom::findEmptySeat()
@@ -66,7 +75,7 @@ int cmGameRoom::findEmptySeat()
 	}
 }
 
-void cmGameRoom::BroadCastRoomChange(void* source,int size)
+void cmGameRoom::BroadCastToRoomUser(void* source,int size)
 {
 	for (int i = 0; i < MAX_PLAYERS_IN_ROOM; i++)
 	{
@@ -90,4 +99,26 @@ void cmGameRoom::ReadyStateChange(cmGameUser* user, bool isReady)
 {
 	std::unique_lock<std::shared_mutex> lckUserArr(mtxUserArr);
 	
+}
+
+void cmGameRoom::SendRoomInfoTo(cmGameUser* user)
+{
+	// already have lock
+	PACKET_LOBBY_PLAYERS lobppac;
+	lobppac.header.type = PACKET_TYPE_LOBBY_PLAYERS;
+	lobppac.header.size = sizeof(lobppac);
+	lobppac.cntPlayer = userArr.size();
+	for (int i = 0; i < MAX_PLAYERS_IN_ROOM; i++)
+	{
+		if (userSeat[i] == nullptr)
+		{
+			lobppac.avatar[i] = -1;
+			continue;
+		}
+		cmGameUser* cur = userSeat[i];
+		cur->getNameCopy(lobppac.nameArr[i]);
+		lobppac.avatar[i] = userArr[cur].avatar;
+		lobppac.isReady[i] = userArr[cur].isReady;
+	}
+	user->SendPacket(&lobppac, lobppac.header.size);
 }
