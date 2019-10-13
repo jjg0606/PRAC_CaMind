@@ -8,6 +8,6 @@ class cmAnswerReader
 	cmAnswerReader();
 	std::vector<std::wstring> answerVec;
 public:
-	std::wstring& getAnswer();
+	std::wstring& GetAnswer();
 	static cmAnswerReader instance;
 };

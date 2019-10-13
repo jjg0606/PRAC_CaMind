@@ -60,31 +60,33 @@ class cmGameScene
 
 	void SendToServer(void* source, int size);
 	void LoadImg();
+	void SetStateCallers();
 
 #pragma region State Functions
 	template<cmGameState S>
 	void ProcessPacket(int type, int size) {};
-	void ProcessPacketCaller(int type, int size);
+	void(cmGameScene::*ProcessPacketCaller)(int type,int size);
 
 	template<cmGameState S>
 	void StateDraw(HDC hdc) {};	
-	void StateDrawCaller(HDC hdc);
+	void(cmGameScene::*StateDrawCaller)(HDC hdc);
 
 	template<cmGameState S>
 	void StateInit() {};	
-	void StateInitCaller();
+	void(cmGameScene::* StateInitCaller)();
+	
 
 	template<cmGameState S>
 	void StateRelease() {};
-	void StateReleaseCaller();
+	void(cmGameScene::* StateReleaseCaller)();
 
 	template<cmGameState S>
 	void StateUpdate() {};
-	void StateUpdateCaller();
+	void(cmGameScene::* StateUpdateCaller)();
 
 	template<cmGameState S>
 	void StateClick(int x,int y,int E_BTN) {};
-	void StateClickCaller(int x, int y, int E_BTN);
+	void(cmGameScene::* StateClickCaller)(int x, int y, int E_BTN);
 #pragma endregion
 
 	// INIT (LOGIN)
@@ -107,13 +109,21 @@ class cmGameScene
 	TableArrange lobbyArrange;
 	
 	// Game
+	std::wstring gameAnswer;
 	std::vector<GameUserInfo> gameUserInfoVec;
 	TableArrange gameArrange;
 	pgBtn* readyBtn;
 	pgBtn* exitBtn;
 	pgBtn* sketchPlane;
 	const int maxChatSizeInGame = 5;
-
+	int TurnIdx;
+	int MyIdx;
+	bool isPlaying = false;
+	bool reserveToRoomOut = false;
+	bool isDrawingContinuous = false;
+	void SendRdySignal();
+	void SendGameExitSignal();
+	void UpdateDroObj();
 public:
 	void DrawScreen(HDC hdc) override;
 	void OnInput(WPARAM wParam) override;

@@ -16,7 +16,7 @@ cmGameRoom* cmRoomMgr::operator[](int index)
 	return nullptr;
 }
 
-void cmRoomMgr::getAllRoomInfo(cmGameUser* user)
+void cmRoomMgr::GetAllRoomInfo(cmGameUser* user)
 {
 	PACKET_LOBBY_INFO lobyinfo;
 	lobyinfo.header.type = PACKET_TYPE_LOBBY_INFO;
@@ -25,7 +25,7 @@ void cmRoomMgr::getAllRoomInfo(cmGameUser* user)
 
 	for (int i = 0; i < MAX_LOBBY; i++)
 	{
-		roomArr[i].getRoomInfo(lobyinfo.playerNum[i], lobyinfo.isPlaying[i]);
+		roomArr[i].GetRoomInfo(lobyinfo.playerNum[i], lobyinfo.isPlaying[i]);
 	}
 
 	user->SendPacket(&lobyinfo, lobyinfo.header.size);

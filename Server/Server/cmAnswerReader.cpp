@@ -10,8 +10,6 @@ cmAnswerReader cmAnswerReader::instance;
 
 cmAnswerReader::cmAnswerReader()
 {
-	srand(time(NULL));
-
 	ifstream ifs;
 	ifs.open(context, ios::in);
 
@@ -37,8 +35,9 @@ cmAnswerReader::cmAnswerReader()
 	ifs.close();
 }
 
-wstring& cmAnswerReader::getAnswer()
+wstring& cmAnswerReader::GetAnswer()
 {
+	srand(time(NULL));
 	int index = rand() % answerVec.size();
 	return answerVec[index];
 }

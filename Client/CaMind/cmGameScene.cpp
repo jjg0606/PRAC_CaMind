@@ -11,8 +11,7 @@ extern SOCKET g_sock;
 void cmGameScene::DrawScreen(HDC hdc)
 {
 	FillRect(hdc, &getWinRect(),(HBRUSH)GetStockObject(WHITE_BRUSH));
-	StateDrawCaller(hdc);
-	dro.Render(hdc);
+	(this->*StateDrawCaller)(hdc);
 }
 
 void cmGameScene::LoadImg()
@@ -41,13 +40,15 @@ void cmGameScene::OnInput(WPARAM wParam)
 void cmGameScene::Update()
 {
 	/*dro.Update();*/
-	StateUpdateCaller();
+	(this->*StateUpdateCaller)();
+	//StateUpdateCaller();
 	Invalidate();
 }
 
 void cmGameScene::Release()
 {
-	StateReleaseCaller();
+	//StateReleaseCaller();
+	(this->*StateReleaseCaller)();
 	for (auto iter = imgMap.begin(); iter != imgMap.end(); iter++)
 	{
 		delete iter->second;
@@ -59,19 +60,22 @@ void cmGameScene::Release()
 void cmGameScene::Init()
 {
 	LoadImg();
-
+	
 	ProgramCore::instance.SetUpdateIntersec(0);
+	SetStateCallers();
 	Invalidate();
 	
 	mainCam = new Camera(0, 0, getWinRect().right, getWinRect().bottom);
-	StateInitCaller();
+	(this->*StateInitCaller)();
+	//StateInitCaller();
 
 	render.SetTransparent(RGB(255, 0, 255));
 }
 
 void cmGameScene::OnMouseClick(int x, int y, int E_MOUSE_BTN)
 {
-	StateClickCaller(x, y, E_MOUSE_BTN);
+	//StateClickCaller(x, y, E_MOUSE_BTN);
+	(this->*StateClickCaller)(x, y, E_MOUSE_BTN);
 }
 
 cmGameScene::~cmGameScene()
@@ -124,6 +128,11 @@ void cmGameScene::ProcessPacketByteStream()
 {
 	while (true)
 	{
+		if (bufIdx < sizeof(PACKET_HEADER))
+		{
+			break;
+		}
+
 		PACKET_HEADER header;
 		memcpy(&header, readBuf, sizeof(header));
 
@@ -131,111 +140,12 @@ void cmGameScene::ProcessPacketByteStream()
 		{
 			break;
 		}
-
-		ProcessPacketCaller(header.type, header.size);
+		(this->*ProcessPacketCaller)(header.type, header.size);
+		//ProcessPacketCaller(header.type, header.size);
 		bufIdx -= header.size;
 	}
 	
 }
-
-#pragma region CALLER
-void cmGameScene::ProcessPacketCaller(int type, int size)
-{
-	switch (state)
-	{
-	case cmGameState::INIT:
-		ProcessPacket<cmGameState::INIT>(type, size);
-		break;
-	case cmGameState::LOBBY:
-		ProcessPacket<cmGameState::LOBBY>(type, size);
-		break;
-	case cmGameState::IN_GAME:
-		ProcessPacket<cmGameState::IN_GAME>(type, size);
-		break;
-	}
-}
-
-void cmGameScene::StateDrawCaller(HDC hdc)
-{
-	switch (state)
-	{
-	case cmGameState::INIT:
-		StateDraw<cmGameState::INIT>(hdc);
-		break;
-	case cmGameState::LOBBY:
-		StateDraw<cmGameState::LOBBY>(hdc);
-		break;
-	case cmGameState::IN_GAME:
-		StateDraw<cmGameState::IN_GAME>(hdc);
-		break;
-
-	}
-}
-
-void cmGameScene::StateInitCaller()
-{
-	switch (state)
-	{
-	case cmGameState::INIT:
-		StateInit<cmGameState::INIT>();
-		break;
-	case cmGameState::LOBBY:
-		StateInit<cmGameState::LOBBY>();
-		break;
-	case cmGameState::IN_GAME:
-		StateInit<cmGameState::IN_GAME>();
-		break;
-	}
-}
-
-void cmGameScene::StateReleaseCaller()
-{
-	switch (state)
-	{
-	case cmGameState::INIT:
-		StateRelease<cmGameState::INIT>();
-		break;
-	case cmGameState::LOBBY:
-		StateRelease<cmGameState::LOBBY>();
-		break;
-	case cmGameState::IN_GAME:
-		StateRelease<cmGameState::IN_GAME>();
-		break;
-	}
-}
-
-void cmGameScene::StateUpdateCaller()
-{
-	switch (state)
-	{
-	case cmGameState::INIT:
-		StateUpdate<cmGameState::INIT>();
-		break;
-	case cmGameState::LOBBY:
-		StateUpdate<cmGameState::LOBBY>();
-		break;
-	case cmGameState::IN_GAME:
-		StateUpdate<cmGameState::IN_GAME>();
-		break;
-	}
-}
-
-void cmGameScene::StateClickCaller(int x, int y, int E_BTN)
-{
-	switch (state)
-	{
-	case cmGameState::INIT:
-		StateClick<cmGameState::INIT>(x, y, E_BTN);
-		break;
-	case cmGameState::LOBBY:
-		StateClick<cmGameState::LOBBY>(x, y, E_BTN);
-		break;
-	case cmGameState::IN_GAME:
-		StateClick<cmGameState::IN_GAME>(x, y, E_BTN);
-		break;
-	}
-}
-#pragma endregion
 
 #pragma region STATE - INIT
 template<>
@@ -399,6 +309,7 @@ void cmGameScene::ProcessPacket<cmGameState::LOBBY>(int type, int size)
 			
 			gameUserInfoVec[i].isReady = loppac.isReady[i];
 			memcpy_s(gameUserInfoVec[i].name, sizeof(gameUserInfoVec[i].name), loppac.nameArr[i], sizeof(wchar_t)*MAX_NAME_LENGTH);
+			MyIdx = loppac.seatIdx;
 			ChangeStateTo(cmGameState::IN_GAME);
 		}
 	}
@@ -605,12 +516,15 @@ void cmGameScene::ProcessPacket<cmGameState::IN_GAME>(int type, int size)
 	case PACKET_TYPE_LOBBY_CHANGE:
 	{
 		PACKET_LOBBY_CHANGE lobchanpac;
-		memcpy_s(&lobchanpac, sizeof(lobchanpac), readBuf, size);
+		memcpy(&lobchanpac, readBuf, size);
 
 		GameUserInfo chuser;
 		chuser.avatarNum = lobchanpac.avatar;
 		chuser.isReady = lobchanpac.rdyState;
-		memcpy_s(chuser.name, sizeof(chuser.name), lobchanpac.name, sizeof(lobchanpac.name));
+		for (int i = 0; i < MAX_NAME_LENGTH; i++)
+		{
+			chuser.name[i] = lobchanpac.name[i];
+		}
 		if (lobchanpac.seatBefore == -1) // new come
 		{
 			gameUserInfoVec[lobchanpac.seatAfter] = chuser;
@@ -643,6 +557,66 @@ void cmGameScene::ProcessPacket<cmGameState::IN_GAME>(int type, int size)
 		if (chatBuf.size() > maxChatSizeInGame)
 		{
 			chatBuf.pop_front();
+		}
+	}
+	break;
+
+	case PACKET_TYPE_LOBBY_INFO:
+	if(reserveToRoomOut)
+	{		
+		PACKET_LOBBY_INFO lobinfopac;
+		memcpy(&lobinfopac, readBuf, size);
+		for (int i = 0; i < lobbyInfo.size(); i++)
+		{
+			lobbyInfo[i].first = lobinfopac.playerNum[i];
+			lobbyInfo[i].second = lobinfopac.isPlaying[i];
+		}
+		reserveToRoomOut = false;
+		ChangeStateTo(cmGameState::LOBBY);
+	}
+	break;
+
+	case PACKET_TYPE_GAME_TURN_MSG:
+	{
+		PACKET_GAME_TURN_MSG turnpac;
+		memcpy(&turnpac, readBuf, size);
+		isPlaying = true;
+		dro.Clear();
+		TurnIdx = turnpac.turnp;
+	}
+	break;
+
+	case PAKCET_TYPE_GAME_ANSWER:
+	{
+		PACKET_GAME_ANSWER anspac;
+		memcpy(&anspac, readBuf, size);
+		gameAnswer = anspac.answer;
+	}
+	break;
+
+	case PACKET_TYPE_SYSTEM:
+	{
+		PACKET_SYSTEM syspac;
+		memcpy(&syspac, readBuf, size);
+		if (syspac.system_msg == SYSTEM_MSG_GAME_END)
+		{
+			isPlaying = false;
+			for (int i = 0; i < gameUserInfoVec.size(); i++)
+			{
+				gameUserInfoVec[i].isReady = false;
+			}
+		}
+	}
+	break;
+
+	case PACKET_TYPE_GAME_POINTS:
+	{
+		PACKET_GAME_POINTS pointsPac;
+		memcpy(&pointsPac, readBuf, size);
+		int index = 0;
+		for (int i = 0; i < pointsPac.pointNum; i++)
+		{
+			dro.PushPoint(pointsPac.point[2*i], pointsPac.point[2*i+1]);
 		}
 	}
 	break;
@@ -687,21 +661,43 @@ void cmGameScene::StateDraw<cmGameState::IN_GAME>(HDC hdc)
 
 			TextOut(hdc, xpos, ypos + gameArrange.height, gameUserInfoVec[index].name, wcslen(gameUserInfoVec[index].name));
 
-			if (gameUserInfoVec[index].isReady)
+			if (gameUserInfoVec[index].isReady && !isPlaying)
 			{
 				render.SetImg(imgMap[IMG_AURA_READY]);
+				render.Render(hdc);
+			}
+
+			if (index == MyIdx)
+			{
+				render.SetImg(imgMap[IMG_AURA_MY]);
+				render.Render(hdc);
+			}
+
+			if (isPlaying && index == TurnIdx)
+			{
+				render.SetImg(imgMap[IMG_AURA_TURN]);
 				render.Render(hdc);
 			}
 		}
 	}
 
-	render.SetImg(imgMap[IMG_BTN_READY]);
-	render.SetPosition(readyBtn->xpos, readyBtn->ypos);
-	render.Render(hdc);
+	if (!isPlaying)
+	{
+		render.SetImg(imgMap[IMG_BTN_READY]);
+		render.SetPosition(readyBtn->xpos, readyBtn->ypos);
+		render.Render(hdc);
 
-	render.SetImg(imgMap[IMG_BTN_EXIT]);
-	render.SetPosition(exitBtn->xpos, exitBtn->ypos);
-	render.Render(hdc);
+		render.SetImg(imgMap[IMG_BTN_EXIT]);
+		render.SetPosition(exitBtn->xpos, exitBtn->ypos);
+		render.Render(hdc);
+	}
+
+	if (isPlaying && TurnIdx == MyIdx)
+	{
+		TextOut(hdc, 550, 10, gameAnswer.c_str(), gameAnswer.length());
+	}
+
+	dro.Render(hdc);
 }
 
 template<>
@@ -714,7 +710,7 @@ void cmGameScene::StateInit<cmGameState::IN_GAME>()
 	readyBtn = new pgBtn(50, 700, imgMap[IMG_BTN_READY]->bmWidth, imgMap[IMG_BTN_READY]->bmHeight);
 	exitBtn = new pgBtn(300, 700, imgMap[IMG_BTN_EXIT]->bmWidth, imgMap[IMG_BTN_EXIT]->bmHeight);
 	sketchPlane = new pgBtn(200,50,imgMap[IMG_SKETCH_PLANE]->bmWidth,imgMap[IMG_SKETCH_PLANE]->bmHeight);
-
+	isPlaying = false;
 	gameArrange.startposX = 50;
 	gameArrange.startposY = 50;
 	gameArrange.width = imgMap[IMG_AVATAR_1]->bmWidth;
@@ -724,6 +720,8 @@ void cmGameScene::StateInit<cmGameState::IN_GAME>()
 	gameArrange.dx = 1000;
 	gameArrange.dy = 100;
 
+	isDrawingContinuous = false;
+	dro.Clear();
 }
 
 template<>
@@ -743,12 +741,90 @@ void cmGameScene::StateUpdate<cmGameState::IN_GAME>()
 	{
 		SendChatMsg();
 	}
+
+	UpdateDroObj();	
+}
+
+void cmGameScene::UpdateDroObj()
+{
+	Vector2D<int> mousePos = ProgramCore::instance.getMousePos();
+	bool mouseKey = ProgramCore::instance.GetMouseKey(MOUSE_LEFT_BTN);
+
+	if (!isPlaying || TurnIdx != MyIdx)
+	{
+		return;
+	}
+
+	if (!sketchPlane->isIn(mousePos.x, mousePos.y))
+	{
+		if (isDrawingContinuous)
+		{
+			isDrawingContinuous = false;
+			dro.PushPoint(-1, -1);
+		}
+		return;
+	}
+
+	if (mouseKey)
+	{
+		if (isDrawingContinuous)
+		{
+			dro.PushPoint(mousePos.x, mousePos.y);
+		}
+		else
+		{
+			isDrawingContinuous = true;
+			dro.PushPoint(-1, -1);
+		}
+	}
+	else
+	{
+		if (isDrawingContinuous)
+		{
+			isDrawingContinuous = false;
+		}
+	}
+
+	dro.Update();
 }
 
 template<>
 void cmGameScene::StateClick<cmGameState::IN_GAME>(int x, int y, int E_BTN)
 {
+	if (E_BTN != MOUSE_LEFT_BTN)
+	{
+		return;
+	}
 
+	if (exitBtn->isIn(x, y)&&!isPlaying)
+	{
+		SendGameExitSignal();
+		return;
+	}
+
+	if (readyBtn->isIn(x, y)&&!isPlaying)
+	{
+		SendRdySignal();
+		return;
+	}
+}
+
+void cmGameScene::SendRdySignal()
+{
+	PACKET_HEADER rdypac;
+	rdypac.type = PACKET_TYPE_GAME_READY;
+	rdypac.size = sizeof(rdypac);
+	SendToServer(&rdypac, rdypac.size);
+}
+
+void cmGameScene::SendGameExitSignal()
+{
+	PACKET_LOBBY_IN lobinpac;
+	lobinpac.header.type = PACKET_TYPE_LOBBY_IN;
+	lobinpac.header.size = sizeof(lobinpac);
+	lobinpac.index = -1;
+	SendToServer(&lobinpac, lobinpac.header.size);
+	reserveToRoomOut = true;
 }
 #pragma endregion
 
@@ -759,7 +835,53 @@ void cmGameScene::SendToServer(void* source, int size)
 
 void cmGameScene::ChangeStateTo(cmGameState nextState)
 {
-	StateReleaseCaller();
+	(this->*StateReleaseCaller)();
 	state = nextState;
-	StateInitCaller();
+	SetStateCallers();
+	(this->*StateInitCaller)();
+}
+
+void cmGameScene::SetStateCallers()
+{
+	switch (state)
+	{
+	case cmGameState::INIT:
+	{
+		const cmGameState statevar = cmGameState::INIT;
+		ProcessPacketCaller = &cmGameScene::ProcessPacket<statevar>;
+		StateDrawCaller = &cmGameScene::StateDraw<statevar>;
+		StateInitCaller = &cmGameScene::StateInit<statevar>;
+		StateReleaseCaller = &cmGameScene::StateRelease<statevar>;
+		StateUpdateCaller = &cmGameScene::StateUpdate<statevar>;
+		StateClickCaller = &cmGameScene::StateClick<statevar>;
+	}
+	break;
+
+	case cmGameState::LOBBY:
+	{
+		const cmGameState statevar = cmGameState::LOBBY;
+		ProcessPacketCaller = &cmGameScene::ProcessPacket<statevar>;
+		StateDrawCaller = &cmGameScene::StateDraw<statevar>;
+		StateInitCaller = &cmGameScene::StateInit<statevar>;
+		StateReleaseCaller = &cmGameScene::StateRelease<statevar>;
+		StateUpdateCaller = &cmGameScene::StateUpdate<statevar>;
+		StateClickCaller = &cmGameScene::StateClick<statevar>;
+	}
+	break;
+
+	case cmGameState::IN_GAME:
+	{
+		const cmGameState statevar = cmGameState::IN_GAME;
+		ProcessPacketCaller = &cmGameScene::ProcessPacket<statevar>;
+		StateDrawCaller = &cmGameScene::StateDraw<statevar>;
+		StateInitCaller = &cmGameScene::StateInit<statevar>;
+		StateReleaseCaller = &cmGameScene::StateRelease<statevar>;
+		StateUpdateCaller = &cmGameScene::StateUpdate<statevar>;
+		StateClickCaller = &cmGameScene::StateClick<statevar>;
+	}
+	break;
+
+	}
+
+	
 }

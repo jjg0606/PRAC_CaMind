@@ -14,5 +14,5 @@ class cmRoomMgr
 public:
 	static cmRoomMgr instance;
 	cmGameRoom* operator[](int index);
-	void getAllRoomInfo(cmGameUser* user);
+	void GetAllRoomInfo(cmGameUser* user);
 };

@@ -2,7 +2,6 @@
 #include <vector>
 #include <string>
 #include <WinSock2.h>
-#include <mutex>
 #include "PACKET.h"
 #define BUFSIZE 512
 
@@ -16,6 +15,7 @@ enum class cmUserState
 
 class cmGameUser
 {
+#pragma region IOVariables
 	SOCKET sock;
 	std::string client_addr;
 	int client_port;
@@ -24,29 +24,52 @@ class cmGameUser
 	char sendBuf[BUFSIZE + 1];
 	int recvBytes;
 	int sendBytes;
-	bool isReading = true;
-	wchar_t name[MAX_NAME_LENGTH];
-	int avatarNum = -1;
+#pragma endregion
 
 #pragma region IO Util Function
 	void Read(DWORD cbTransferred);
-	void Send();
+	bool SendToUser();
 	void ReadSet();
 	void ProcessByteStream();
 	bool CopyToSendbuf(void* source, int size);
 #pragma endregion
 
-	cmUserState state = cmUserState::DEFAULT;
-	
+	// Msg Handler
 	template<cmUserState S>
-	void Update(int type,int size);
-	void UpateCall(int type, int size);
+	void HandlePacket(int type,int size);
+	void HandlePacketCall(int type, int size);
+
+#pragma region BasicVariables
+	cmUserState state = cmUserState::DEFAULT;
+	wchar_t name[MAX_NAME_LENGTH];
+	const int DefaultAvatarNum = -1;
+	int avatarNum = DefaultAvatarNum;
+#pragma endregion
+	
+#pragma region StateVariables
 	//DEFAULT
 	//LOBBY
-	int roomNum = -1;
+	struct LobbyVariables
+	{
+		int roomNum = -1;
+	};
+	LobbyVariables lobbyVar;
+#pragma endregion
+
+#pragma region MessageHandleFunctions
+	// Called in Default
+	void HandleLogInMsg(int size);
+	// Called in Lobby
+	void HandleLobbyInMsg(int size);
+	void HandleLobbyChatMsg(int size);
+	// Called in Game
+	void HandleInGameChatMsg(int size);
+	void HandleGameRoomExit(int size);
+	void HandleGameRdySignal(int size);
+	void HandleGamePointsSignal(int size);
+#pragma endregion
 
 public:
-	std::mutex userMtx;
 	WSAOVERLAPPED overlapped;
 	WSABUF wsabuf;
 	explicit cmGameUser(SOCKET sock,std::string client_addr,int client_port);
@@ -54,20 +77,20 @@ public:
 	void Process(DWORD cbTransferred);
 	void InitOverlapped();
 
-	int getAvatar();
-	void getNameCopy(wchar_t* dest);
-	void SendPacket(void* packet, int size);
+	int GetAvatar();
+	void GetNameCopy(wchar_t* dest);
+	bool SendPacket(void* packet, int size);
 };
 
 #pragma region TEMPLATE SPECIALIZED
 template<>
-void cmGameUser::Update<cmUserState::DEFAULT>(int type, int size);
+void cmGameUser::HandlePacket<cmUserState::DEFAULT>(int type, int size);
 
 template<>
-void cmGameUser::Update<cmUserState::LOBBY>(int type, int size);
+void cmGameUser::HandlePacket<cmUserState::LOBBY>(int type, int size);
 
 template<>
-void cmGameUser::Update<cmUserState::GAME>(int type, int size);
+void cmGameUser::HandlePacket<cmUserState::GAME>(int type, int size);
 #pragma endregion
 
 

@@ -7,14 +7,14 @@ cmLobbyMgr::cmLobbyMgr()
 
 }
 
-void cmLobbyMgr::getIn(cmGameUser* user)
+void cmLobbyMgr::GetIn(cmGameUser* user)
 {
 	userMtx.lock();
 	userSet.insert(user);
 	userMtx.unlock();
 }
 
-void cmLobbyMgr::getOut(cmGameUser* user)
+void cmLobbyMgr::GetOut(cmGameUser* user)
 {
 	userMtx.lock();
 	userSet.erase(user);

@@ -16,68 +16,50 @@ cmGameUser::cmGameUser(SOCKET sock, std::string client_addr, int client_port)
 
 cmGameUser::~cmGameUser()
 {
-	cmLobbyMgr::instance.getOut(this);
-	if (roomNum != -1)
+	cmLobbyMgr::instance.GetOut(this);
+	if (lobbyVar.roomNum != -1)
 	{
-		cmRoomMgr::instance[roomNum]->requestRoomOut(this);
+		cmRoomMgr::instance[lobbyVar.roomNum]->RequestRoomOut(this);
 	}
 }
-
 
 void cmGameUser::Process(DWORD cbTransferred)
 {
 	// receive
-	if (isReading)
-	{
-		Read(cbTransferred);
-		ProcessByteStream();
-	}
-	else
-	{
-		sendBytes -= cbTransferred;
-		if (sendBytes > 0)
-		{
-			Send();
-		}
-		else
-		{
-			ReadSet();
-		}		
-	}
-	
+	Read(cbTransferred);
+	ProcessByteStream();
+	ReadSet();
 }
 
 #pragma region IO Util Function
 void cmGameUser::Read(DWORD cbTransferred)
 {
 	recvBytes += cbTransferred;
-	//printf("[TCP/%s:%d] %s\n", client_addr.c_str(), client_port, readBuf + readBefore);
 }
 
-void cmGameUser::Send()
+bool cmGameUser::SendToUser()
 {
-	isReading = false;
-
 	InitOverlapped();
 	wsabuf.buf = sendBuf;
 	wsabuf.len = sendBytes;
 
-	DWORD sendbytes;
-	int retval = WSASend(sock, &wsabuf, 1, &sendbytes, 0, &overlapped, NULL);
+	int retval = send(sock, sendBuf, sendBytes, 0);
 	if (retval == SOCKET_ERROR)
 	{
 		if (WSAGetLastError() != WSA_IO_PENDING)
 		{
 			printf("WSASend()");
 		}
-		return;
+		return false;
 	}	
+	std::cout << client_port << ' ' << "send " << sendBytes << '\n';
+	sendBytes = 0;
+	Sleep(10);
+	return true;
 }
 
 void cmGameUser::ReadSet()
 {
-	isReading = true;
-
 	InitOverlapped();
 	wsabuf.buf = readBuf + recvBytes;
 	wsabuf.len = BUFSIZE - recvBytes;
@@ -114,7 +96,7 @@ void cmGameUser::ProcessByteStream()
 		}
 		isUpdateCalled = true;
 		printf("[TCP/%s:%d] type : %d, size : %d\n", client_addr.c_str(), client_port, header.type, header.size);
-		UpateCall(header.type,header.size);
+		HandlePacketCall(header.type,header.size);
 
 		for (int i = header.size; i < recvBytes ; i++)
 		{
@@ -123,12 +105,6 @@ void cmGameUser::ProcessByteStream()
 
 		recvBytes -= header.size;
 	}
-
-	if (!isUpdateCalled || isReading)
-	{
-		ReadSet();
-	}
-
 }
 
 bool cmGameUser::CopyToSendbuf(void* source, int size)
@@ -137,7 +113,6 @@ bool cmGameUser::CopyToSendbuf(void* source, int size)
 	{
 		return false;
 	}
-
 	memcpy(sendBuf + sendBytes, source, size);
 	sendBytes += size;
 	return true;
@@ -148,22 +123,27 @@ void cmGameUser::InitOverlapped()
 	ZeroMemory(&this->overlapped, sizeof(this->overlapped));
 }
 
-void cmGameUser::SendPacket(void* packet, int size)
+bool cmGameUser::SendPacket(void* packet, int size)
 {
-	CopyToSendbuf(packet, size);
-	Send();
+	if (!CopyToSendbuf(packet, size))
+	{
+		return false;
+	}
+
+	return SendToUser();
+	
 }
 
 #pragma endregion
 
 #pragma region Getter Setter
 
-int cmGameUser::getAvatar()
+int cmGameUser::GetAvatar()
 {
 	return avatarNum;
 }
 
-void cmGameUser::getNameCopy(wchar_t* dest)
+void cmGameUser::GetNameCopy(wchar_t* dest)
 {
 	for (int i = 0; i < MAX_NAME_LENGTH; i++)
 	{
@@ -174,18 +154,18 @@ void cmGameUser::getNameCopy(wchar_t* dest)
 #pragma endregion
 
 #pragma region Call Function
-void cmGameUser::UpateCall(int type, int size)
+void cmGameUser::HandlePacketCall(int type, int size)
 {
 	switch (state)
 	{
 	case cmUserState::DEFAULT:
-		Update<cmUserState::DEFAULT>(type, size);
+		HandlePacket<cmUserState::DEFAULT>(type, size);
 		break;
 	case cmUserState::LOBBY:
-		Update<cmUserState::LOBBY>(type, size);
+		HandlePacket<cmUserState::LOBBY>(type, size);
 		break;
 	case cmUserState::GAME:
-		Update<cmUserState::GAME>(type, size);
+		HandlePacket<cmUserState::GAME>(type, size);
 		break;
 	}
 }
@@ -193,105 +173,177 @@ void cmGameUser::UpateCall(int type, int size)
 #pragma endregion
 
 template<cmUserState S>
-void cmGameUser::Update(int type,int size)
+void cmGameUser::HandlePacket(int type,int size)
 {
+	// this function only be called at wrong state
 	printf("[TCP SERVER] %s : %d , error update call unexpected state\n", client_addr.c_str(), client_port);
 }
 
-
+#pragma region Default State
 template<>
-void cmGameUser::Update<cmUserState::DEFAULT>(int type,int size)
-{	
+void cmGameUser::HandlePacket<cmUserState::DEFAULT>(int type, int size)
+{
 	switch (type)
 	{
 
 	case PACKET_TYPE_LOGIN_INFO:
-	if (avatarNum != -1)
-	{
+		if (avatarNum == DefaultAvatarNum)
+		{
+			HandleLogInMsg(size);
+		}
 		break;
+
+	default:
+		break;
+	}
+}
+
+void cmGameUser::HandleLogInMsg(int size)
+{
+	PACKET_LOGIN_INFO loginPac;
+	memcpy(&loginPac, readBuf, size);
+	for (int i = 0; i < MAX_NAME_LENGTH; i++)
+	{
+		name[i] = loginPac.name[i];
+	}
+	avatarNum = loginPac.avatar;
+	cmRoomMgr::instance.GetAllRoomInfo(this);
+	cmLobbyMgr::instance.GetIn(this);
+	state = cmUserState::LOBBY;
+}
+
+
+#pragma endregion
+
+#pragma region Lobby State
+template<>
+void cmGameUser::HandlePacket<cmUserState::LOBBY>(int type, int size)
+{
+	switch (type)
+	{
+
+	case PACKET_TYPE_LOBBY_IN:	
+	HandleLobbyInMsg(size);	
+	break;
+
+	case PACKET_TYPE_LOBBY_CHAT:
+	HandleLobbyChatMsg(size);
+	break;
+
+	default:
+		break;
+	}
+}
+
+void cmGameUser::HandleLobbyInMsg(int size)
+{
+	PACKET_LOBBY_IN lobinpac;
+	memcpy(&lobinpac, readBuf, size);
+	if (lobinpac.index < 0 || lobinpac.index >= MAX_LOBBY)
+	{
+		// process refresh signal
+		cmRoomMgr::instance.GetAllRoomInfo(this);
 	}
 	else
 	{
-		PACKET_LOGIN_INFO loginPac;
-		memcpy(&loginPac, readBuf, size);
-		for (int i = 0; i < MAX_NAME_LENGTH;i++)
+		if (cmRoomMgr::instance[lobinpac.index]->RequestRoomIn(this))
 		{
-			name[i] = loginPac.name[i];
+			cmLobbyMgr::instance.GetOut(this);
+			state = cmUserState::GAME;
+			lobbyVar.roomNum = lobinpac.index;
 		}
-		avatarNum = loginPac.avatar;
-		cmRoomMgr::instance.getAllRoomInfo(this);
-		cmLobbyMgr::instance.getIn(this);
-		state = cmUserState::LOBBY;
-	}			
-	break;
-
-	default:
-		break;
-	}	
+	}
 }
 
+void cmGameUser::HandleLobbyChatMsg(int size)
+{
+	PACKET_LOBBY_CHAT lobchatpac;
+	memcpy(&lobchatpac, readBuf, size);
+	for (int i = 0; i < MAX_NAME_LENGTH; i++)
+	{
+		lobchatpac.playerName[i] = name[i];
+	}
+	std::cout << client_addr << name << ' ' << size << '\n';
+	cmLobbyMgr::instance.BroadCast(&lobchatpac, size);
+}
+#pragma endregion
+
+#pragma region Game State
 template<>
-void cmGameUser::Update<cmUserState::LOBBY>(int type,int size)
+void cmGameUser::HandlePacket<cmUserState::GAME>(int type, int size)
 {
 	switch (type)
 	{
+
+	case PACKET_TYPE_LOBBY_CHAT:
+	HandleInGameChatMsg(size);
+	break;
 
 	case PACKET_TYPE_LOBBY_IN:
-	{
-		PACKET_LOBBY_IN lobinpac;
-		memcpy(&lobinpac, readBuf, size);
-		if (lobinpac.index < 0 || lobinpac.index >= MAX_LOBBY) // refresh
-		{
-			cmRoomMgr::instance.getAllRoomInfo(this);
-		}
-		else
-		{
-			if (cmRoomMgr::instance[lobinpac.index]->requestRoomIn(this))
-			{
-				cmLobbyMgr::instance.getOut(this);
-				state = cmUserState::GAME;
-				roomNum = lobinpac.index;
-			}
-		}
-	}
+	HandleGameRoomExit(size);
 	break;
 
-	case PACKET_TYPE_LOBBY_CHAT:
-	{
-		PACKET_LOBBY_CHAT lobchatpac;
-		memcpy(&lobchatpac, readBuf, size);
-		for (int i = 0; i < MAX_NAME_LENGTH; i++)
-		{
-			lobchatpac.playerName[i] = name[i];
-		}		
-		std::cout << client_addr << name << ' ' << size << '\n';
-		cmLobbyMgr::instance.BroadCast(&lobchatpac, size);
-	}
+	case PACKET_TYPE_GAME_READY:
+	HandleGameRdySignal(size);
 	break;
 
-	default:
-		break;
+	case PACKET_TYPE_GAME_POINTS:
+	HandleGamePointsSignal(size);
+	break;
+
 	}
 }
 
-template<>
-void cmGameUser::Update<cmUserState::GAME>(int type, int size)
+void cmGameUser::HandleInGameChatMsg(int size)
 {
-	switch (type)
+	PACKET_LOBBY_CHAT lobchatpac;
+	memcpy(&lobchatpac, readBuf, size);
+	for (int i = 0; i < MAX_NAME_LENGTH; i++)
 	{
+		lobchatpac.playerName[i] = name[i];
+	}
 
-	case PACKET_TYPE_LOBBY_CHAT:
+	std::wstring ans;
+	for (int i = 0; i < lobchatpac.chatLength; i++)
 	{
-		PACKET_LOBBY_CHAT lobchatpac;
-		memcpy(&lobchatpac, readBuf, size);
-		for (int i = 0; i < MAX_NAME_LENGTH; i++)
-		{
-			lobchatpac.playerName[i] = name[i];
-		}
-		cmRoomMgr::instance[roomNum]->BroadCastToRoomUser(&lobchatpac, lobchatpac.header.size);
+		ans.push_back(lobchatpac.msg[i]);
 	}
-	break;
-
-
-	}
+	cmRoomMgr::instance[lobbyVar.roomNum]->ChkAnswer(this,ans);
+	cmRoomMgr::instance[lobbyVar.roomNum]->BroadCastToRoomUser(&lobchatpac, lobchatpac.header.size);
 }
+
+void cmGameUser::HandleGameRoomExit(int size)
+{
+	PACKET_LOBBY_IN lobinPac;
+	memcpy_s(&lobinPac, sizeof(lobinPac), readBuf, size);
+	if (lobinPac.index != -1)
+	{
+		return;
+	}
+
+	cmRoomMgr::instance[lobbyVar.roomNum]->RequestRoomOut(this);
+
+	state = cmUserState::LOBBY;
+
+	std::wstring msg;
+
+	cmLobbyMgr::instance.GetIn(this);
+	cmRoomMgr::instance.GetAllRoomInfo(this);
+}
+
+void cmGameUser::HandleGameRdySignal(int size)
+{
+	cmGameRoom* curRoom = cmRoomMgr::instance[lobbyVar.roomNum];
+	if (curRoom == nullptr)
+	{
+		return;
+	}
+	curRoom->ToggleReady(this);
+}
+
+void cmGameUser::HandleGamePointsSignal(int size)
+{
+	cmRoomMgr::instance[lobbyVar.roomNum]->PointsPacketSync(this, &readBuf, size);
+}
+
+#pragma endregion

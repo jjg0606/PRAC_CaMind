@@ -12,7 +12,7 @@ class cmLobbyMgr
 	cmLobbyMgr();
 public:
 	static cmLobbyMgr instance;
-	void getIn(cmGameUser* user);
-	void getOut(cmGameUser* user);
+	void GetIn(cmGameUser* user);
+	void GetOut(cmGameUser* user);
 	void BroadCast(void* source, int size);
 };
