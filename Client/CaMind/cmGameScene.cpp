@@ -606,6 +606,10 @@ void cmGameScene::ProcessPacket<cmGameState::IN_GAME>(int type, int size)
 				gameUserInfoVec[i].isReady = false;
 			}
 		}
+		else if (syspac.system_msg == SYSTEM_MSG_GAME_POINT_CLEAR)
+		{
+			dro.Clear();
+		}
 	}
 	break;
 
@@ -696,8 +700,11 @@ void cmGameScene::StateDraw<cmGameState::IN_GAME>(HDC hdc)
 	{
 		TextOut(hdc, 550, 10, gameAnswer.c_str(), gameAnswer.length());
 	}
-
-	dro.Render(hdc);
+	if (isPlaying)
+	{
+		dro.Render(hdc);
+	}
+	
 }
 
 template<>
@@ -791,21 +798,27 @@ void cmGameScene::UpdateDroObj()
 template<>
 void cmGameScene::StateClick<cmGameState::IN_GAME>(int x, int y, int E_BTN)
 {
-	if (E_BTN != MOUSE_LEFT_BTN)
+	if (E_BTN == MOUSE_LEFT_BTN)
 	{
-		return;
-	}
+		if (exitBtn->isIn(x, y)&&!isPlaying)
+		{
+			SendGameExitSignal();
+			return;
+		}
 
-	if (exitBtn->isIn(x, y)&&!isPlaying)
-	{
-		SendGameExitSignal();
-		return;
+		if (readyBtn->isIn(x, y)&&!isPlaying)
+		{
+			SendRdySignal();
+			return;
+		}
 	}
-
-	if (readyBtn->isIn(x, y)&&!isPlaying)
+	else if (E_BTN == MOUSE_RIGHT_BTN)
 	{
-		SendRdySignal();
-		return;
+		if (isPlaying&& MyIdx == TurnIdx)
+		{
+			dro.Clear();
+			SendClearSignal();
+		}
 	}
 }
 
@@ -825,6 +838,15 @@ void cmGameScene::SendGameExitSignal()
 	lobinpac.index = -1;
 	SendToServer(&lobinpac, lobinpac.header.size);
 	reserveToRoomOut = true;
+}
+
+void cmGameScene::SendClearSignal()
+{
+	PACKET_SYSTEM syspac;
+	syspac.header.type = PACKET_TYPE_SYSTEM;
+	syspac.header.size = sizeof(syspac);
+	syspac.system_msg = SYSTEM_MSG_GAME_POINT_CLEAR;
+	SendToServer(&syspac, syspac.header.size);
 }
 #pragma endregion
 

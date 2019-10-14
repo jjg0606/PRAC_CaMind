@@ -123,6 +123,7 @@ class cmGameScene
 	bool isDrawingContinuous = false;
 	void SendRdySignal();
 	void SendGameExitSignal();
+	void SendClearSignal();
 	void UpdateDroObj();
 public:
 	void DrawScreen(HDC hdc) override;

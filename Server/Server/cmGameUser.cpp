@@ -1,7 +1,6 @@
 #include "cmGameUser.h"
 #include "cmRoomMgr.h"
 #include "cmLobbyMgr.h"
-#include <iostream>
 
 cmGameUser::cmGameUser(SOCKET sock, std::string client_addr, int client_port)
 	: sock(sock), client_addr(client_addr), client_port(client_port)
@@ -17,7 +16,7 @@ cmGameUser::cmGameUser(SOCKET sock, std::string client_addr, int client_port)
 cmGameUser::~cmGameUser()
 {
 	cmLobbyMgr::instance.GetOut(this);
-	if (lobbyVar.roomNum != -1)
+	if (lobbyVar.roomNum != NotInRoom)
 	{
 		cmRoomMgr::instance[lobbyVar.roomNum]->RequestRoomOut(this);
 	}
@@ -26,17 +25,12 @@ cmGameUser::~cmGameUser()
 void cmGameUser::Process(DWORD cbTransferred)
 {
 	// receive
-	Read(cbTransferred);
+	recvBytes += cbTransferred;
 	ProcessByteStream();
 	ReadSet();
 }
 
 #pragma region IO Util Function
-void cmGameUser::Read(DWORD cbTransferred)
-{
-	recvBytes += cbTransferred;
-}
-
 bool cmGameUser::SendToUser()
 {
 	InitOverlapped();
@@ -52,9 +46,9 @@ bool cmGameUser::SendToUser()
 		}
 		return false;
 	}	
-	std::cout << client_port << ' ' << "send " << sendBytes << '\n';
+	printf("[TCP/%s:%d] <SEND> size : %d\n", client_addr.c_str(), client_port, sendBytes);
 	sendBytes = 0;
-	Sleep(10);
+	Sleep(DefaultSleepTime);
 	return true;
 }
 
@@ -95,7 +89,7 @@ void cmGameUser::ProcessByteStream()
 			break;
 		}
 		isUpdateCalled = true;
-		printf("[TCP/%s:%d] type : %d, size : %d\n", client_addr.c_str(), client_port, header.type, header.size);
+		printf("[TCP/%s:%d] <READ> type : %d, size : %d\n", client_addr.c_str(), client_port, header.type, header.size);
 		HandlePacketCall(header.type,header.size);
 
 		for (int i = header.size; i < recvBytes ; i++)
@@ -133,10 +127,9 @@ bool cmGameUser::SendPacket(void* packet, int size)
 	return SendToUser();
 	
 }
-
 #pragma endregion
 
-#pragma region Getter Setter
+#pragma region Getter
 
 int cmGameUser::GetAvatar()
 {
@@ -212,7 +205,6 @@ void cmGameUser::HandleLogInMsg(int size)
 	state = cmUserState::LOBBY;
 }
 
-
 #pragma endregion
 
 #pragma region Lobby State
@@ -263,7 +255,6 @@ void cmGameUser::HandleLobbyChatMsg(int size)
 	{
 		lobchatpac.playerName[i] = name[i];
 	}
-	std::cout << client_addr << name << ' ' << size << '\n';
 	cmLobbyMgr::instance.BroadCast(&lobchatpac, size);
 }
 #pragma endregion
@@ -284,13 +275,25 @@ void cmGameUser::HandlePacket<cmUserState::GAME>(int type, int size)
 	break;
 
 	case PACKET_TYPE_GAME_READY:
-	HandleGameRdySignal(size);
+	HandleGameRdySignal();
 	break;
 
 	case PACKET_TYPE_GAME_POINTS:
 	HandleGamePointsSignal(size);
 	break;
 
+	case PACKET_TYPE_SYSTEM:
+	{
+		PACKET_SYSTEM syspac;
+		memcpy(&syspac, readBuf, size);
+		switch (syspac.system_msg)
+		{
+		case SYSTEM_MSG_GAME_POINT_CLEAR:
+		HandleGamePointClearSignal(size);
+		break;
+		}
+	}
+	break;
 	}
 }
 
@@ -309,7 +312,7 @@ void cmGameUser::HandleInGameChatMsg(int size)
 		ans.push_back(lobchatpac.msg[i]);
 	}
 	cmRoomMgr::instance[lobbyVar.roomNum]->ChkAnswer(this,ans);
-	cmRoomMgr::instance[lobbyVar.roomNum]->BroadCastToRoomUser(&lobchatpac, lobchatpac.header.size);
+	cmRoomMgr::instance[lobbyVar.roomNum]->BroadCastChatMsg(this,&lobchatpac, lobchatpac.header.size);
 }
 
 void cmGameUser::HandleGameRoomExit(int size)
@@ -331,7 +334,7 @@ void cmGameUser::HandleGameRoomExit(int size)
 	cmRoomMgr::instance.GetAllRoomInfo(this);
 }
 
-void cmGameUser::HandleGameRdySignal(int size)
+void cmGameUser::HandleGameRdySignal()
 {
 	cmGameRoom* curRoom = cmRoomMgr::instance[lobbyVar.roomNum];
 	if (curRoom == nullptr)
@@ -343,7 +346,12 @@ void cmGameUser::HandleGameRdySignal(int size)
 
 void cmGameUser::HandleGamePointsSignal(int size)
 {
-	cmRoomMgr::instance[lobbyVar.roomNum]->PointsPacketSync(this, &readBuf, size);
+	cmRoomMgr::instance[lobbyVar.roomNum]->PointsPacketSync(this, readBuf, size);
+}
+
+void cmGameUser::HandleGamePointClearSignal(int size)
+{
+	cmRoomMgr::instance[lobbyVar.roomNum]->PointClearOrder(this,readBuf,size);
 }
 
 #pragma endregion

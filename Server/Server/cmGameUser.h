@@ -24,10 +24,10 @@ class cmGameUser
 	char sendBuf[BUFSIZE + 1];
 	int recvBytes;
 	int sendBytes;
+	static const int DefaultSleepTime = 10;
 #pragma endregion
 
 #pragma region IO Util Function
-	void Read(DWORD cbTransferred);
 	bool SendToUser();
 	void ReadSet();
 	void ProcessByteStream();
@@ -42,18 +42,16 @@ class cmGameUser
 #pragma region BasicVariables
 	cmUserState state = cmUserState::DEFAULT;
 	wchar_t name[MAX_NAME_LENGTH];
-	const int DefaultAvatarNum = -1;
 	int avatarNum = DefaultAvatarNum;
 #pragma endregion
 	
 #pragma region StateVariables
-	//DEFAULT
-	//LOBBY
 	struct LobbyVariables
 	{
-		int roomNum = -1;
+		int roomNum = NotInRoom;
 	};
 	LobbyVariables lobbyVar;
+	
 #pragma endregion
 
 #pragma region MessageHandleFunctions
@@ -65,11 +63,14 @@ class cmGameUser
 	// Called in Game
 	void HandleInGameChatMsg(int size);
 	void HandleGameRoomExit(int size);
-	void HandleGameRdySignal(int size);
+	void HandleGameRdySignal();
 	void HandleGamePointsSignal(int size);
+	void HandleGamePointClearSignal(int size);
 #pragma endregion
 
 public:
+	static const int DefaultAvatarNum = -1;
+	static const int NotInRoom = -1;
 	WSAOVERLAPPED overlapped;
 	WSABUF wsabuf;
 	explicit cmGameUser(SOCKET sock,std::string client_addr,int client_port);

@@ -6,10 +6,9 @@
 #include <string>
 #include "cmGameUser.h"
 #include "cmUserMgr.h"
+#include "SettingLoader.h"
 
-#define SERVERPORT 8989
 #define BUFSIZE 512
-
 
 DWORD WINAPI WorkThread(LPVOID arg);
 
@@ -48,7 +47,7 @@ int main()
 	}
 
 	// socket
-	SOCKET listen_sock = socket(AF_INET, SOCK_STREAM, 0);
+	SOCKET listen_sock = socket(SettingLoader::instance.getIPType(), SettingLoader::instance.getProtocol(), 0);
 	if (listen_sock == INVALID_SOCKET)
 	{
 		err_quit("socket()");
@@ -56,9 +55,9 @@ int main()
 	//bind
 	SOCKADDR_IN serveraddr;
 	ZeroMemory(&serveraddr, sizeof(serveraddr));
-	serveraddr.sin_family = AF_INET;
+	serveraddr.sin_family = SettingLoader::instance.getIPType();
 	serveraddr.sin_addr.s_addr = htonl(INADDR_ANY);
-	serveraddr.sin_port = htons(SERVERPORT);
+	serveraddr.sin_port = htons(SettingLoader::instance.getPort());
 	retval = bind(listen_sock, (SOCKADDR*)&serveraddr, sizeof(serveraddr));
 	if (retval == SOCKET_ERROR)
 	{
@@ -118,9 +117,7 @@ int main()
 			continue;
 		}
 	}
-
-
-
+	   
 	WSACleanup();
 	return 0;
 }
@@ -184,9 +181,7 @@ DWORD WINAPI WorkThread(LPVOID arg)
 			closesocket(client_sock);
 			continue;
 		}
-		//
-		//curUser->userMtx.lock();
-		// TODO
+
 		if (retval == 0 || cbTransferred == 0)
 		{
 			if (retval == 0)
@@ -202,8 +197,6 @@ DWORD WINAPI WorkThread(LPVOID arg)
 		}
 
 		curUser->Process(cbTransferred);
-		//
-		//curUser->userMtx.unlock();
 	}
 
 	return 0;
